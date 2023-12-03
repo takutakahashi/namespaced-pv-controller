@@ -35,9 +35,31 @@ spec:
           spec:
             description: NamespacedPvSpec defines the desired state of NamespacedPv
             properties:
-              foo:
-                description: Foo is an example field of NamespacedPv. Edit namespacedpv_types.go
-                  to remove/update
+              accessModes:
+                items:
+                  type: string
+                type: array
+              capacity:
+                properties:
+                  storage:
+                    type: string
+                type: object
+              mountOptions:
+                type: string
+              nfs:
+                properties:
+                  path:
+                    type: string
+                  server:
+                    type: string
+                type: object
+              reclaimPolicy:
+                type: string
+              storageClassName:
+                type: string
+              volumeName:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
                 type: string
             type: object
           status:

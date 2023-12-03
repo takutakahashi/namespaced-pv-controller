@@ -27,9 +27,13 @@ import (
 type NamespacedPvSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of NamespacedPv. Edit namespacedpv_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	valumeName       string   `json:"volumeName,omitempty"`
+	accessModes      []string `json:"accessModes,omitempty"`
+	storageClassName string   `json:"storageClassName,omitempty"`
+	reclaimPolicy    string   `json:"reclaimPolicy,omitempty"`
+	mountOptions     string   `json:"mountOptions,omitempty"`
+	nfs              NFS      `json:"nfs,omitempty"`
+	capacity         Capacity `json:"capacity,omitempty"`
 }
 
 // NamespacedPvStatus defines the observed state of NamespacedPv
@@ -57,6 +61,15 @@ type NamespacedPvList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []NamespacedPv `json:"items"`
+}
+
+type NFS struct {
+	server string `json:"server,omitempty"`
+	path   string `json:"path,omitempty"`
+}
+
+type Capacity struct {
+	storage string `json:"storage,omitempty"`
 }
 
 func init() {
