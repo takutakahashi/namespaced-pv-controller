@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: namespaced-pv-controller
   name: namespacedpv-sample
+  namespace: default
 spec:
   volumeName: nfs-pv
   nfs:

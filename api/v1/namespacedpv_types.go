@@ -27,13 +27,13 @@ import (
 type NamespacedPvSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	valumeName       string   `json:"volumeName,omitempty"`
-	accessModes      []string `json:"accessModes,omitempty"`
-	storageClassName string   `json:"storageClassName,omitempty"`
-	reclaimPolicy    string   `json:"reclaimPolicy,omitempty"`
-	mountOptions     string   `json:"mountOptions,omitempty"`
-	nfs              NFS      `json:"nfs,omitempty"`
-	capacity         Capacity `json:"capacity,omitempty"`
+	ValumeName       string   `json:"volumeName,omitempty"`
+	AccessModes      []string `json:"accessModes,omitempty"`
+	StorageClassName string   `json:"storageClassName,omitempty"`
+	ReclaimPolicy    string   `json:"reclaimPolicy,omitempty"`
+	MountOptions     string   `json:"mountOptions,omitempty"`
+	Nfs              NFS      `json:"nfs,omitempty"`
+	Capacity         Capacity `json:"capacity,omitempty"`
 }
 
 // NamespacedPvStatus defines the observed state of NamespacedPv
@@ -64,12 +64,12 @@ type NamespacedPvList struct {
 }
 
 type NFS struct {
-	server string `json:"server,omitempty"`
-	path   string `json:"path,omitempty"`
+	Server string `json:"server,omitempty"`
+	Path   string `json:"path,omitempty"`
 }
 
 type Capacity struct {
-	storage string `json:"storage,omitempty"`
+	Storage string `json:"storage,omitempty"`
 }
 
 func init() {
