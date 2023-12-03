@@ -1,0 +1,12 @@
+apiVersion: namespaced-pv.homi.run/v1
+kind: NamespacedPv
+metadata:
+  labels:
+    app.kubernetes.io/name: namespacedpv
+    app.kubernetes.io/instance: namespacedpv-sample
+    app.kubernetes.io/part-of: namespaced-pv-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: namespaced-pv-controller
+  name: namespacedpv-sample
+spec:
+  # TODO(user): Add fields here

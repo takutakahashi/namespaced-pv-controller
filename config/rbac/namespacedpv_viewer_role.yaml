@@ -1,0 +1,27 @@
+# permissions for end users to view namespacedpvs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: namespacedpv-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: namespaced-pv-controller
+    app.kubernetes.io/part-of: namespaced-pv-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: namespacedpv-viewer-role
+rules:
+- apiGroups:
+  - namespaced-pv.homi.run
+  resources:
+  - namespacedpvs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - namespaced-pv.homi.run
+  resources:
+  - namespacedpvs/status
+  verbs:
+  - get

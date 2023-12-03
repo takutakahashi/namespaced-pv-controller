@@ -1,0 +1,33 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - namespaced-pv.homi.run
+  resources:
+  - namespacedpvs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - namespaced-pv.homi.run
+  resources:
+  - namespacedpvs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - namespaced-pv.homi.run
+  resources:
+  - namespacedpvs/status
+  verbs:
+  - get
+  - patch
+  - update

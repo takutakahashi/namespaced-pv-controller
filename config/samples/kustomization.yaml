@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- namespaced-pv_v1_namespacedpv.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples
