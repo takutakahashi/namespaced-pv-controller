@@ -21,6 +21,8 @@ import (
 	"errors"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -64,6 +66,21 @@ func (r *NamespacedPvReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	var pvLists corev1.PersistentVolumeList
+	// r.List(ctx, &pvLists)
+	// logger.Info("%v", pvLists)
+	if err = r.List(ctx, &pvLists, &client.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{"owner": namespacedPv.Name})}); err != nil {
+		logger.Error(err, "unable to fetch PersistentVolume")
+		return ctrl.Result{}, err
+	}
+
+	for _, pv := range pvLists.Items {
+		err = r.DeleteNamespacedPV(ctx, &namespacedPv, &pv)
+		if err != nil {
+			logger.Error(err, "unable to delete NamespacedPv")
+			return ctrl.Result{}, err
+		}
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -87,6 +104,9 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 	pv := &corev1.PersistentVolume{}
 
 	pv.SetName(namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace)
+	pv.SetLabels(map[string]string{
+		"owner": namespacedPv.Name,
+	})
 	op, err := ctrl.CreateOrUpdate(ctx, r.Client, pv, func() error {
 		pv.Spec = corev1.PersistentVolumeSpec{
 			AccessModes: namespacedPv.Spec.AccessModes,
@@ -113,5 +133,38 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 		logger.Info("PersistentVolume created or updated", "operation", op)
 	}
 
+	return nil
+}
+
+func (r *NamespacedPvReconciler) DeleteNamespacedPV(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv, targetPv *corev1.PersistentVolume) error {
+	logger := log.FromContext(ctx)
+
+	finalizerName := "namespacedpv.homi.run/finalizer"
+	if namespacedPv.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(namespacedPv, finalizerName) {
+			namespacedPv.ObjectMeta.Finalizers = append(namespacedPv.ObjectMeta.Finalizers, finalizerName)
+			if err := r.Update(ctx, namespacedPv); err != nil {
+				logger.Error(err, "unable to update NamespacedPv")
+				return err
+			}
+		}
+	} else {
+		if controllerutil.ContainsFinalizer(namespacedPv, finalizerName) {
+			cond := metav1.Preconditions{
+				UID:             &targetPv.UID,
+				ResourceVersion: &targetPv.ResourceVersion,
+			}
+			if err := r.Delete(ctx, targetPv, &client.DeleteOptions{Preconditions: &cond}); err != nil {
+				logger.Error(err, "unable to delete NamespacedPv")
+				return err
+			}
+			controllerutil.RemoveFinalizer(namespacedPv, finalizerName)
+			if err := r.Update(ctx, namespacedPv); err != nil {
+				logger.Error(err, "unable to update NamespacedPv")
+				return err
+			}
+		}
+		return nil
+	}
 	return nil
 }
