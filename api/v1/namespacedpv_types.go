@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -27,13 +28,15 @@ import (
 type NamespacedPvSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	VolumeName       string   `json:"volumeName"`
-	AccessModes      []string `json:"accessModes"`
-	StorageClassName string   `json:"storageClassName"`
-	ReclaimPolicy    string   `json:"reclaimPolicy"`
-	MountOptions     string   `json:"mountOptions"`
-	Nfs              NFS      `json:"nfs,omitempty"`
-	Capacity         Capacity `json:"capacity"`
+	VolumeName       string                               `json:"volumeName"`
+	AccessModes      []corev1.PersistentVolumeAccessMode  `json:"accessModes"`
+	StorageClassName string                               `json:"storageClassName"`
+	ReclaimPolicy    corev1.PersistentVolumeReclaimPolicy `json:"reclaimPolicy"`
+	MountOptions     string                               `json:"mountOptions"`
+	Nfs              NFS                                  `json:"nfs,omitempty"`
+	Capacity         corev1.ResourceList                  `json:"capacity"`
+	// +kubebuilder:default=Filesystem
+	VolumeMode corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
 }
 
 // NamespacedPvStatus defines the observed state of NamespacedPv
@@ -64,8 +67,9 @@ type NamespacedPvList struct {
 }
 
 type NFS struct {
-	Server string `json:"server"`
-	Path   string `json:"path"`
+	Server   string `json:"server"`
+	Path     string `json:"path"`
+	ReadOnly bool   `json:"readOnly,omitempty"`
 }
 
 type Capacity struct {
