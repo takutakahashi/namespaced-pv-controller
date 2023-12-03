@@ -88,7 +88,7 @@ func newNamespacedPv() *namespacedpvv1.NamespacedPv {
 				corev1.ResourceStorage: resource.MustParse("1Gi"),
 			},
 			Nfs: namespacedpvv1.NFS{
-				Server:   "192.0.0.1",
+				Server:   "127.0.0.1",
 				Path:     "/data/share",
 				ReadOnly: false,
 			},

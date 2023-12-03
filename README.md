@@ -1,8 +1,9 @@
 # namespaced-pv-controller
-// TODO(user): Add simple overview of use/purpose
+Namespace name suffix to the PersistentVolume name.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+The name of the PersistentVolume that uses NFS is given the suffix of the Namespace name.
+This allows for a similar approach in environments where dynamic provisioning is not possible due to special restrictions.
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
