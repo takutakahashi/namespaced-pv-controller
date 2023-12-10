@@ -21,8 +21,14 @@ var _ = Describe("namespaced pv controller", func() {
 	var stopFunc func()
 
 	BeforeEach(func() {
-		err := k8sClient.DeleteAllOf(ctx, &namespacedpvv1.NamespacedPv{}, client.InNamespace("test"))
+		namespacedPv := namespacedpvv1.NamespacedPv{}
+		err := k8sClient.DeleteAllOf(ctx, &namespacedPv, client.InNamespace("test"))
 		Expect(err).NotTo(HaveOccurred())
+		// Eventually(func() error {
+		// 	k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "namespaced-pv"}, &namespacedPv)
+		// 	// fmt.Printf("%v", namespacedPv)
+		// 	return k8sClient.Get(ctx, client.ObjectKey{Name: "namespaced-pv", Namespace: "test"}, &namespacedpvv1.NamespacedPv{})
+		// }, "30s", "1s").ShouldNot(Succeed()) // リソースが存在しないことを期待
 		pvs := &corev1.PersistentVolumeList{}
 		err = k8sClient.List(ctx, pvs, client.InNamespace("test"))
 		Expect(err).NotTo(HaveOccurred())
@@ -30,7 +36,7 @@ var _ = Describe("namespaced pv controller", func() {
 			err = k8sClient.Delete(ctx, &pv)
 			Expect(err).NotTo(HaveOccurred())
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(5000 * time.Millisecond)
 
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme: scheme.Scheme,
@@ -38,8 +44,8 @@ var _ = Describe("namespaced pv controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler := &NamespacedPvReconciler{
-			Client: k8sClient,
-			Scheme: scheme.Scheme,
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
 		}
 		err = reconciler.SetupWithManager(mgr)
 		Expect(err).NotTo(HaveOccurred())
@@ -72,12 +78,47 @@ var _ = Describe("namespaced pv controller", func() {
 		}).Should(Succeed())
 	})
 
+	It("should delete PersistentVolume", func() {
+		namespacedPv := newNamespacedPv()
+		err := k8sClient.Create(ctx, namespacedPv)
+		Expect(err).NotTo(HaveOccurred())
+
+		pv := corev1.PersistentVolume{}
+		Eventually(func() error {
+			return k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "test-pv-test"}, &pv)
+		}).Should(Succeed())
+
+		err = k8sClient.Delete(ctx, namespacedPv)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "test-pv-test"}, &pv)
+		Expect(err).NotTo(HaveOccurred())
+		// 	Eventually(func() error {
+		// 		return k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "test-pv-test"}, &pv)
+		// 	}, "10s", "1s").ShouldNot(Succeed())
+	})
+
+	It("should update PersistentVolume", func() {
+		namespacedPv := newNamespacedPv()
+		err := k8sClient.Create(ctx, namespacedPv)
+		Expect(err).NotTo(HaveOccurred())
+
+		pv := corev1.PersistentVolume{}
+		Eventually(func() error {
+			return k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "test-pv-test"}, &pv)
+		}).Should(Succeed())
+
+		namespacedPv.Spec.Nfs.Server = "172.0.0.2"
+		err = k8sClient.Update(ctx, namespacedPv)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 })
 
 func newNamespacedPv() *namespacedpvv1.NamespacedPv {
 	return &namespacedpvv1.NamespacedPv{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-namespace",
+			Name:      "namespaced-pv",
 			Namespace: "test",
 		},
 		Spec: namespacedpvv1.NamespacedPvSpec{

@@ -66,7 +66,10 @@ var _ = BeforeSuite(func() {
 
 	err = namespacedpvv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-
+	// err = clientgoscheme.AddToScheme(scheme.Scheme)
+	// Expect(err).NotTo(HaveOccurred())
+	err = corev1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})

@@ -67,8 +67,7 @@ func (r *NamespacedPvReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	var pvLists corev1.PersistentVolumeList
-	// r.List(ctx, &pvLists)
-	// logger.Info("%v", pvLists)
+
 	if err = r.List(ctx, &pvLists, &client.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{"owner": namespacedPv.Name})}); err != nil {
 		logger.Error(err, "unable to fetch PersistentVolume")
 		return ctrl.Result{}, err
