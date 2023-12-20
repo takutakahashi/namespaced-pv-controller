@@ -24,11 +24,6 @@ var _ = Describe("namespaced pv controller", func() {
 		namespacedPv := namespacedpvv1.NamespacedPv{}
 		err := k8sClient.DeleteAllOf(ctx, &namespacedPv, client.InNamespace("test"))
 		Expect(err).NotTo(HaveOccurred())
-		// Eventually(func() error {
-		// 	k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "namespaced-pv"}, &namespacedPv)
-		// 	// fmt.Printf("%v", namespacedPv)
-		// 	return k8sClient.Get(ctx, client.ObjectKey{Name: "namespaced-pv", Namespace: "test"}, &namespacedpvv1.NamespacedPv{})
-		// }, "30s", "1s").ShouldNot(Succeed()) // リソースが存在しないことを期待
 		pvs := &corev1.PersistentVolumeList{}
 		err = k8sClient.List(ctx, pvs, client.InNamespace("test"))
 		Expect(err).NotTo(HaveOccurred())
@@ -93,9 +88,6 @@ var _ = Describe("namespaced pv controller", func() {
 
 		err = k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "test-pv-test"}, &pv)
 		Expect(err).NotTo(HaveOccurred())
-		// 	Eventually(func() error {
-		// 		return k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "test-pv-test"}, &pv)
-		// 	}, "10s", "1s").ShouldNot(Succeed())
 	})
 
 	It("should update PersistentVolume", func() {
