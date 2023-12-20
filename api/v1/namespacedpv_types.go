@@ -44,6 +44,8 @@ type NamespacedPvSpec struct {
 type NamespacedPvStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	RefPvName string `json:"refPvName,omitempty"`
+	RefPvUid  string `json:"refPvUid,omitempty"`
 }
 
 //+kubebuilder:object:root=true

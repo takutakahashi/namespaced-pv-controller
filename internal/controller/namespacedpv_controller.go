@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -66,15 +67,25 @@ func (r *NamespacedPvReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	var pvLists corev1.PersistentVolumeList
+	finalizerName := "namespacedpv.homi.run/finalizer"
+	if !controllerutil.ContainsFinalizer(&namespacedPv, finalizerName) {
+		namespacedPvCopy := namespacedPv.DeepCopy()
+		namespacedPvCopy.Finalizers = []string{finalizerName}
+		patch := client.MergeFrom(&namespacedPv)
+		if err := r.Patch(ctx, namespacedPvCopy, patch); err != nil {
+			logger.Error(err, "unable to patch NamespacedPv")
+			return ctrl.Result{}, err
+		}
+	}
 
+	var pvLists corev1.PersistentVolumeList
 	if err = r.List(ctx, &pvLists, &client.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{"owner": namespacedPv.Name})}); err != nil {
 		logger.Error(err, "unable to fetch PersistentVolume")
 		return ctrl.Result{}, err
 	}
 
 	for _, pv := range pvLists.Items {
-		err = r.DeleteNamespacedPV(ctx, &namespacedPv, &pv)
+		err = r.DeleteNamespacedPV(ctx, &namespacedPv, &pv, finalizerName)
 		if err != nil {
 			logger.Error(err, "unable to delete NamespacedPv")
 			return ctrl.Result{}, err
@@ -151,24 +162,15 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 
 	if op != controllerutil.OperationResultNone {
 		logger.Info("PersistentVolume created or updated", "operation", op)
+		r.UpdateStatus(ctx, namespacedPv)
 	}
 
 	return nil
 }
 
-func (r *NamespacedPvReconciler) DeleteNamespacedPV(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv, targetPv *corev1.PersistentVolume) error {
+func (r *NamespacedPvReconciler) DeleteNamespacedPV(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv, targetPv *corev1.PersistentVolume, finalizerName string) error {
 	logger := log.FromContext(ctx)
-
-	finalizerName := "namespacedpv.homi.run/finalizer"
-	if namespacedPv.ObjectMeta.DeletionTimestamp.IsZero() {
-		if !controllerutil.ContainsFinalizer(namespacedPv, finalizerName) {
-			namespacedPv.ObjectMeta.Finalizers = append(namespacedPv.ObjectMeta.Finalizers, finalizerName)
-			if err := r.Update(ctx, namespacedPv); err != nil {
-				logger.Error(err, "unable to update NamespacedPv")
-				return err
-			}
-		}
-	} else {
+	if !namespacedPv.ObjectMeta.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(namespacedPv, finalizerName) {
 			cond := metav1.Preconditions{
 				UID:             &targetPv.UID,
@@ -187,4 +189,27 @@ func (r *NamespacedPvReconciler) DeleteNamespacedPV(ctx context.Context, namespa
 		return nil
 	}
 	return nil
+}
+
+func (r *NamespacedPvReconciler) UpdateStatus(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv) error {
+	logger := log.FromContext(ctx)
+	newNamespacedPv := namespacedPv.DeepCopy()
+	newNamespacedPv.Status.RefPvName = namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace
+	newNamespacedPv.Status.RefPvUid, _ = r.GetPvUid(ctx, namespacedPv)
+	patch := client.MergeFrom(namespacedPv)
+	if err := r.Status().Patch(ctx, newNamespacedPv, patch); err != nil {
+		logger.Error(err, "unable to update NamespacedPv status")
+		return err
+	}
+	return nil
+}
+
+func (r *NamespacedPvReconciler) GetPvUid(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv) (string, error) {
+	logger := log.FromContext(ctx)
+	pv := &corev1.PersistentVolume{}
+	if err := r.Get(ctx, types.NamespacedName{Name: namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace}, pv); err != nil {
+		logger.Error(err, "unable to get PersistentVolume")
+		return "", err
+	}
+	return string(pv.UID), nil
 }
