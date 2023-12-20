@@ -193,9 +193,11 @@ func (r *NamespacedPvReconciler) DeleteNamespacedPV(ctx context.Context, namespa
 
 func (r *NamespacedPvReconciler) UpdateStatus(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv) error {
 	logger := log.FromContext(ctx)
-	namespacedPv.Status.RefPvName = namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace
-	namespacedPv.Status.RefPvUid, _ = r.GetPvUid(ctx, namespacedPv)
-	if err := r.Status().Update(ctx, namespacedPv); err != nil {
+	newNamespacedPv := namespacedPv.DeepCopy()
+	newNamespacedPv.Status.RefPvName = namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace
+	newNamespacedPv.Status.RefPvUid, _ = r.GetPvUid(ctx, namespacedPv)
+	patch := client.MergeFrom(namespacedPv)
+	if err := r.Status().Patch(ctx, newNamespacedPv, patch); err != nil {
 		logger.Error(err, "unable to update NamespacedPv status")
 		return err
 	}
