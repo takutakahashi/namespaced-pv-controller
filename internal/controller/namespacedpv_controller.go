@@ -107,19 +107,40 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 		"owner": namespacedPv.Name,
 	})
 	op, err := ctrl.CreateOrUpdate(ctx, r.Client, pv, func() error {
-		pv.Spec = corev1.PersistentVolumeSpec{
-			AccessModes: namespacedPv.Spec.AccessModes,
-			Capacity:    namespacedPv.Spec.Capacity,
-			PersistentVolumeSource: corev1.PersistentVolumeSource{
-				NFS: &corev1.NFSVolumeSource{
-					Server:   namespacedPv.Spec.Nfs.Server,
-					Path:     namespacedPv.Spec.Nfs.Path,
-					ReadOnly: namespacedPv.Spec.Nfs.ReadOnly,
+		if namespacedPv.Spec.ClaimRefName != "" {
+			pv.Spec = corev1.PersistentVolumeSpec{
+				AccessModes: namespacedPv.Spec.AccessModes,
+				Capacity:    namespacedPv.Spec.Capacity,
+				PersistentVolumeSource: corev1.PersistentVolumeSource{
+					NFS: &corev1.NFSVolumeSource{
+						Server:   namespacedPv.Spec.Nfs.Server,
+						Path:     namespacedPv.Spec.Nfs.Path,
+						ReadOnly: namespacedPv.Spec.Nfs.ReadOnly,
+					},
 				},
-			},
-			PersistentVolumeReclaimPolicy: namespacedPv.Spec.ReclaimPolicy,
-			StorageClassName:              namespacedPv.Spec.StorageClassName,
-			VolumeMode:                    &namespacedPv.Spec.VolumeMode,
+				PersistentVolumeReclaimPolicy: namespacedPv.Spec.ReclaimPolicy,
+				StorageClassName:              namespacedPv.Spec.StorageClassName,
+				VolumeMode:                    &namespacedPv.Spec.VolumeMode,
+				ClaimRef: &corev1.ObjectReference{
+					Namespace: namespacedPv.Namespace,
+					Name:      namespacedPv.Spec.ClaimRefName,
+				},
+			}
+		} else {
+			pv.Spec = corev1.PersistentVolumeSpec{
+				AccessModes: namespacedPv.Spec.AccessModes,
+				Capacity:    namespacedPv.Spec.Capacity,
+				PersistentVolumeSource: corev1.PersistentVolumeSource{
+					NFS: &corev1.NFSVolumeSource{
+						Server:   namespacedPv.Spec.Nfs.Server,
+						Path:     namespacedPv.Spec.Nfs.Path,
+						ReadOnly: namespacedPv.Spec.Nfs.ReadOnly,
+					},
+				},
+				PersistentVolumeReclaimPolicy: namespacedPv.Spec.ReclaimPolicy,
+				StorageClassName:              namespacedPv.Spec.StorageClassName,
+				VolumeMode:                    &namespacedPv.Spec.VolumeMode,
+			}
 		}
 		return nil
 	})
