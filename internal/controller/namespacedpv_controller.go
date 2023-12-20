@@ -117,6 +117,9 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 	pv.SetLabels(map[string]string{
 		"owner": namespacedPv.Name,
 	})
+	pv.SetAnnotations(map[string]string{
+		"pv.kubernetes.io/provisioned-by": "namespaced-pv-controller",
+	})
 	op, err := ctrl.CreateOrUpdate(ctx, r.Client, pv, func() error {
 		if namespacedPv.Spec.ClaimRefName != "" {
 			pv.Spec = corev1.PersistentVolumeSpec{
@@ -171,7 +174,7 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 func (r *NamespacedPvReconciler) DeleteNamespacedPV(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv, targetPv *corev1.PersistentVolume, finalizerName string) error {
 	logger := log.FromContext(ctx)
 	if !namespacedPv.ObjectMeta.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(namespacedPv, finalizerName) {
+		if controllerutil.ContainsFinalizer(namespacedPv, finalizerName) && targetPv.Annotations["pv.kubernetes.io/provisioned-by"] == "namespaced-pv-controller" {
 			cond := metav1.Preconditions{
 				UID:             &targetPv.UID,
 				ResourceVersion: &targetPv.ResourceVersion,
