@@ -36,7 +36,8 @@ type NamespacedPvSpec struct {
 	Nfs              NFS                                  `json:"nfs,omitempty"`
 	Capacity         corev1.ResourceList                  `json:"capacity"`
 	// +kubebuilder:default=Filesystem
-	VolumeMode corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
+	VolumeMode   corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
+	ClaimRefName string                      `json:"claimRefName,omitempty"`
 }
 
 // NamespacedPvStatus defines the observed state of NamespacedPv
