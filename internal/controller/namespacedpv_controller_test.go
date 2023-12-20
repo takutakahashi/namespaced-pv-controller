@@ -127,6 +127,7 @@ func newNamespacedPv() *namespacedpvv1.NamespacedPv {
 			},
 			ReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
 			MountOptions:  "nolock,vers=4.1",
+			ClaimRefName:  "test-pvc",
 		},
 	}
 }
