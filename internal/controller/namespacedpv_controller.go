@@ -120,26 +120,50 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 	pv.SetAnnotations(map[string]string{
 		"pv.kubernetes.io/provisioned-by": "namespaced-pv-controller",
 	})
-	op, err := ctrl.CreateOrUpdate(ctx, r.Client, pv, func() error {
+
+	op, err := controllerutil.CreateOrPatch(ctx, r.Client, pv, func() error {
 		if namespacedPv.Spec.ClaimRefName != "" {
-			pv.Spec = corev1.PersistentVolumeSpec{
-				AccessModes: namespacedPv.Spec.AccessModes,
-				Capacity:    namespacedPv.Spec.Capacity,
-				PersistentVolumeSource: corev1.PersistentVolumeSource{
-					NFS: &corev1.NFSVolumeSource{
-						Server:   namespacedPv.Spec.Nfs.Server,
-						Path:     namespacedPv.Spec.Nfs.Path,
-						ReadOnly: namespacedPv.Spec.Nfs.ReadOnly,
+			if pv.Spec.ClaimRef == nil {
+				pv.Spec = corev1.PersistentVolumeSpec{
+					AccessModes: namespacedPv.Spec.AccessModes,
+					Capacity:    namespacedPv.Spec.Capacity,
+					PersistentVolumeSource: corev1.PersistentVolumeSource{
+						NFS: &corev1.NFSVolumeSource{
+							Server:   namespacedPv.Spec.Nfs.Server,
+							Path:     namespacedPv.Spec.Nfs.Path,
+							ReadOnly: namespacedPv.Spec.Nfs.ReadOnly,
+						},
 					},
-				},
-				PersistentVolumeReclaimPolicy: namespacedPv.Spec.ReclaimPolicy,
-				StorageClassName:              namespacedPv.Spec.StorageClassName,
-				VolumeMode:                    &namespacedPv.Spec.VolumeMode,
-				ClaimRef: &corev1.ObjectReference{
-					Namespace: namespacedPv.Namespace,
-					Name:      namespacedPv.Spec.ClaimRefName,
-				},
+					PersistentVolumeReclaimPolicy: namespacedPv.Spec.ReclaimPolicy,
+					StorageClassName:              namespacedPv.Spec.StorageClassName,
+					VolumeMode:                    &namespacedPv.Spec.VolumeMode,
+					ClaimRef: &corev1.ObjectReference{
+						Namespace: namespacedPv.Namespace,
+						Name:      namespacedPv.Spec.ClaimRefName,
+					},
+				}
+			} else {
+				newPvClaimRef := pv.Spec.ClaimRef.DeepCopy()
+				pv.Spec = corev1.PersistentVolumeSpec{
+					AccessModes: namespacedPv.Spec.AccessModes,
+					Capacity:    namespacedPv.Spec.Capacity,
+					PersistentVolumeSource: corev1.PersistentVolumeSource{
+						NFS: &corev1.NFSVolumeSource{
+							Server:   namespacedPv.Spec.Nfs.Server,
+							Path:     namespacedPv.Spec.Nfs.Path,
+							ReadOnly: namespacedPv.Spec.Nfs.ReadOnly,
+						},
+					},
+					PersistentVolumeReclaimPolicy: namespacedPv.Spec.ReclaimPolicy,
+					StorageClassName:              namespacedPv.Spec.StorageClassName,
+					VolumeMode:                    &namespacedPv.Spec.VolumeMode,
+				}
+				pv.Spec.ClaimRef = newPvClaimRef
+
+				pv.Spec.ClaimRef.Namespace = namespacedPv.Namespace
+				pv.Spec.ClaimRef.Name = namespacedPv.Spec.ClaimRefName
 			}
+
 		} else {
 			pv.Spec = corev1.PersistentVolumeSpec{
 				AccessModes: namespacedPv.Spec.AccessModes,
@@ -164,7 +188,7 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 	}
 
 	if op != controllerutil.OperationResultNone {
-		logger.Info("PersistentVolume created or updated", "operation", op)
+		logger.Info("PersistentVolume created or patched", "operation", op)
 		r.UpdateStatus(ctx, namespacedPv)
 	}
 
