@@ -43,6 +43,7 @@ type NamespacedPvReconciler struct {
 //+kubebuilder:rbac:groups=namespaced-pv.homi.run,resources=namespacedpvs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=namespaced-pv.homi.run,resources=namespacedpvs/finalizers,verbs=update
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=persistentvolumes/finalizers,verbs=update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -115,7 +116,8 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 
 	pv.SetName(namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace)
 	pv.SetLabels(map[string]string{
-		"owner": namespacedPv.Name,
+		"owner":           namespacedPv.Name,
+		"owner-namespace": namespacedPv.Namespace,
 	})
 	pv.SetAnnotations(map[string]string{
 		"pv.kubernetes.io/provisioned-by": "namespaced-pv-controller",
@@ -199,18 +201,26 @@ func (r *NamespacedPvReconciler) DeleteNamespacedPV(ctx context.Context, namespa
 	logger := log.FromContext(ctx)
 	if !namespacedPv.ObjectMeta.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(namespacedPv, finalizerName) && targetPv.Annotations["pv.kubernetes.io/provisioned-by"] == "namespaced-pv-controller" {
-			cond := metav1.Preconditions{
-				UID:             &targetPv.UID,
-				ResourceVersion: &targetPv.ResourceVersion,
-			}
-			if err := r.Delete(ctx, targetPv, &client.DeleteOptions{Preconditions: &cond}); err != nil {
-				logger.Error(err, "unable to delete NamespacedPv")
-				return err
-			}
 			controllerutil.RemoveFinalizer(namespacedPv, finalizerName)
 			if err := r.Update(ctx, namespacedPv); err != nil {
 				logger.Error(err, "unable to update NamespacedPv")
 				return err
+			}
+			if controllerutil.ContainsFinalizer(targetPv, "namespacedpv.homi.run/pvFinalizer") {
+				controllerutil.RemoveFinalizer(targetPv, "namespacedpv.homi.run/pvFinalizer")
+				if err := r.Update(ctx, targetPv); err != nil {
+					logger.Error(err, "unable to update PersistentVolume")
+					return err
+				}
+				r.Get(ctx, types.NamespacedName{Name: targetPv.Name}, targetPv)
+				cond := metav1.Preconditions{
+					UID:             &targetPv.UID,
+					ResourceVersion: &targetPv.ResourceVersion,
+				}
+				if err := r.Delete(ctx, targetPv, &client.DeleteOptions{Preconditions: &cond}); err != nil {
+					logger.Error(err, "unable to delete NamespacedPv")
+					return err
+				}
 			}
 		}
 		return nil

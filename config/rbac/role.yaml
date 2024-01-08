@@ -18,6 +18,21 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - persistentvolumes/finalizers
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - namespaced-pv.homi.run
   resources:
   - namespacedpvs
