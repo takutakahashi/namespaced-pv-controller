@@ -87,17 +87,17 @@ func (r *PersistentVolumeReconciler) DeletePV(ctx context.Context, pv *corev1.Pe
 
 			logger.Info("pv finalizer is removed")
 			namespacedPv := &namespacedpvv1.NamespacedPv{}
-			r.Get(ctx, client.ObjectKey{Namespace: pv.Labels["owner-namespace"], Name: pv.Labels["owner"]}, namespacedPv)
-
-			if namespacedPv.Annotations["namespacedpv.homi.run/recreate-pv-count"] == "" {
-				namespacedPv.Annotations["namespacedpv.homi.run/recreate-pv-count"] = "0"
+			if err := r.Get(ctx, client.ObjectKey{Namespace: pv.Labels["owner-namespace"], Name: pv.Labels["owner"]}, namespacedPv); err != nil {
+				logger.Error(err, "unable to fetch NamespacedPv")
+				return err
 			}
 
-			recreateCount, _ := strconv.Atoi(namespacedPv.Annotations["nnamespacedpv.homi.run/recreate-pv-count"])
-			// FIXME: recreateCount is always 1
-			namespacedPv.Annotations["namespacedpv.homi.run/recreate-pv-count"] = strconv.Itoa(recreateCount + 1)
-			if err := r.Update(ctx, namespacedPv); err != nil {
-				logger.Error(err, "unable to update NamespacedPv")
+			recreateCount, _ := strconv.Atoi(namespacedPv.Annotations["namespacedpv.homi.run/recreate-pv-count"])
+			namespacedPvCopy := namespacedPv.DeepCopy()
+			namespacedPvCopy.Annotations["namespacedpv.homi.run/recreate-pv-count"] = strconv.Itoa(recreateCount + 1)
+			patch := client.MergeFrom(namespacedPv)
+			if err := r.Patch(ctx, namespacedPvCopy, patch); err != nil {
+				logger.Error(err, "unable to patch NamespacedPv")
 				return err
 			}
 		}
