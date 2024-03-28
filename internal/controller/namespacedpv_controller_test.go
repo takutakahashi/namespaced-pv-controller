@@ -100,6 +100,9 @@ var _ = Describe("namespaced pv controller", func() {
 			return k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "test-pv-test"}, &pv)
 		}).Should(Succeed())
 
+		Eventually(func() error {
+			return k8sClient.Get(ctx, client.ObjectKey{Namespace: namespacedPv.Namespace, Name: namespacedPv.Name}, namespacedPv)
+		}).Should(Succeed())
 		namespacedPv.Spec.Nfs.Server = "172.0.0.2"
 		err = k8sClient.Update(ctx, namespacedPv)
 		Expect(err).NotTo(HaveOccurred())
