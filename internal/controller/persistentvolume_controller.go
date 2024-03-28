@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"strconv"
 
 	namespacedpvv1 "github.com/homirun/namespaced-pv-controller/api/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +33,8 @@ type PersistentVolumeReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+
+var FINALIZER_NAME = "namespacedpv.homi.run/pvFinalizer"
 
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes/status,verbs=get;update;patch
@@ -62,10 +63,13 @@ func (r *PersistentVolumeReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	finalizerName := "namespacedpv.homi.run/pvFinalizer"
-	if !controllerutil.ContainsFinalizer(pv, finalizerName) {
+	if !pv.GetDeletionTimestamp().IsZero() {
+		return ctrl.Result{}, r.DeletePV(ctx, pv)
+	}
+
+	if !controllerutil.ContainsFinalizer(pv, FINALIZER_NAME) {
 		pvCopy := pv.DeepCopy()
-		pvCopy.Finalizers = append(pvCopy.Finalizers, finalizerName)
+		pvCopy.Finalizers = append(pvCopy.Finalizers, FINALIZER_NAME)
 		patch := client.MergeFrom(pv)
 		if err := r.Patch(ctx, pvCopy, patch); err != nil {
 			logger.Error(err, "unable to patch PersistentVolume")
@@ -73,56 +77,53 @@ func (r *PersistentVolumeReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	r.DeletePV(ctx, pv, finalizerName)
-
 	return ctrl.Result{}, nil
 }
 
-func (r *PersistentVolumeReconciler) DeletePV(ctx context.Context, pv *corev1.PersistentVolume, finalizerName string) error {
+func (r *PersistentVolumeReconciler) DeletePV(ctx context.Context, pv *corev1.PersistentVolume) error {
 	logger := log.FromContext(ctx)
 
-	if pv.Status.Phase == corev1.VolumeReleased {
-		if pv.Spec.PersistentVolumeReclaimPolicy == corev1.PersistentVolumeReclaimDelete && pv.Annotations["pv.kubernetes.io/provisioned-by"] == "namespaced-pv-controller" {
-			// if err := r.Delete(ctx, pv); err != nil {
-			// 	logger.Error(err, "unable to delete PersistentVolume")
-			// 	return err
-			// }
-
-			pvCopy := pv.DeepCopy()
-			pvCopy.Spec.ClaimRef = nil
-			patch := client.MergeFrom(pv)
-			if err := r.Patch(ctx, pvCopy, patch); err != nil {
-				logger.Error(err, "unable to patch PersistentVolume")
-				return err
-			}
-		}
-	}
-
-	if !pv.GetDeletionTimestamp().IsZero() {
-		if controllerutil.ContainsFinalizer(pv, finalizerName) && pv.Annotations["pv.kubernetes.io/provisioned-by"] == "namespaced-pv-controller" {
-			controllerutil.RemoveFinalizer(pv, finalizerName)
+	namespacedPv := &namespacedpvv1.NamespacedPv{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: pv.Labels["owner-namespace"], Name: pv.Labels["owner"]}, namespacedPv); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			// namespacedPv がなかったら pv の finalizer を削除して終了
+			logger.Info("NamespacedPv not found", "namespace", pv.Labels["owner-namespace"], "name", pv.Labels["owner"])
+			controllerutil.RemoveFinalizer(pv, FINALIZER_NAME)
 			if err := r.Update(ctx, pv); err != nil {
 				logger.Error(err, "unable to update PersistentVolume")
 				return err
 			}
+			logger.Info("pv deleted", "namespace", pv.Namespace, "name", pv.Name)
+			return nil
+		}
+		logger.Error(err, "unable to fetch NamespacedPv")
+		return err
+	}
 
-			logger.Info("pv finalizer is removed")
-			namespacedPv := &namespacedpvv1.NamespacedPv{}
-			if err := r.Get(ctx, client.ObjectKey{Namespace: pv.Labels["owner-namespace"], Name: pv.Labels["owner"]}, namespacedPv); err != nil {
-				logger.Error(err, "unable to fetch NamespacedPv")
-				return err
-			}
-
-			recreateCount, _ := strconv.Atoi(namespacedPv.Annotations["namespacedpv.homi.run/recreate-pv-count"])
-			namespacedPvCopy := namespacedPv.DeepCopy()
-			namespacedPvCopy.Annotations["namespacedpv.homi.run/recreate-pv-count"] = strconv.Itoa(recreateCount + 1)
-			patch := client.MergeFrom(namespacedPv)
-			if err := r.Patch(ctx, namespacedPvCopy, patch); err != nil {
-				logger.Error(err, "unable to patch NamespacedPv")
-				return err
-			}
+	if pv.Status.Phase == corev1.VolumeReleased && pv.Spec.PersistentVolumeReclaimPolicy == corev1.PersistentVolumeReclaimDelete {
+		pvCopy := pv.DeepCopy()
+		pvCopy.Spec.ClaimRef = nil
+		patch := client.MergeFrom(pv)
+		if err := r.Patch(ctx, pvCopy, patch); err != nil {
+			logger.Error(err, "unable to patch PersistentVolume")
+			return err
 		}
 	}
+
+	namespacedPvCopy := namespacedPv.DeepCopy()
+	namespacedPvCopy.Status.RefPvName = ""
+	namespacedPvCopy.Status.RefPvUid = ""
+	if err := r.Status().Update(ctx, namespacedPvCopy); err != nil {
+		logger.Error(err, "unable to update NamespacedPv")
+		return err
+	}
+
+	controllerutil.RemoveFinalizer(pv, FINALIZER_NAME)
+	if err := r.Update(ctx, pv); err != nil {
+		logger.Error(err, "unable to update PersistentVolume")
+		return err
+	}
+	logger.Info("pv deleted", "namespace", pv.Namespace, "name", pv.Name)
 	return nil
 }
 

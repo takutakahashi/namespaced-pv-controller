@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"math/rand"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -101,6 +102,23 @@ func (r *NamespacedPvReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
+func GetPvName(namespacedPv *namespacedpvv1.NamespacedPv) string {
+	if namespacedPv.Status.RefPvName == "" {
+		pvName := GeneratePvName(namespacedPv)
+		SetExistingPvName(namespacedPv, pvName)
+		return pvName
+	}
+	return namespacedPv.Status.RefPvName
+}
+
+func SetExistingPvName(namespacedPv *namespacedpvv1.NamespacedPv, pvName string) {
+	namespacedPv.Status.RefPvName = pvName
+}
+
+func GeneratePvName(namespacedPv *namespacedpvv1.NamespacedPv) string {
+	return namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace + "-" + randomString(5)
+}
+
 // create PersietentVolume
 func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv) error {
 	// only nfs supported
@@ -109,11 +127,11 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 		nilNfsError := errors.New("only nfs supported")
 		return nilNfsError
 	}
-
-	// create PersistentVolume
+	controlledPvName := GetPvName(namespacedPv)
 	pv := &corev1.PersistentVolume{}
 
-	pv.SetName(namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace)
+	// create PersistentVolume
+	pv.SetName(controlledPvName)
 	pv.SetLabels(map[string]string{
 		"owner":           namespacedPv.Name,
 		"owner-namespace": namespacedPv.Namespace,
@@ -189,8 +207,10 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 	}
 
 	if op != controllerutil.OperationResultNone {
-		logger.Info("PersistentVolume created or patched", "operation", op)
-		r.UpdateStatus(ctx, namespacedPv)
+		if err := r.UpdateStatus(ctx, namespacedPv, pv.Name, ""); err != nil {
+			logger.Error(err, "unable to update NamespacedPv status")
+			return err
+		}
 	}
 
 	return nil
@@ -223,13 +243,12 @@ func (r *NamespacedPvReconciler) DeleteNamespacedPV(ctx context.Context, namespa
 	return nil
 }
 
-func (r *NamespacedPvReconciler) UpdateStatus(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv) error {
+func (r *NamespacedPvReconciler) UpdateStatus(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv, newPvName, newPvUid string) error {
 	logger := log.FromContext(ctx)
 	newNamespacedPv := namespacedPv.DeepCopy()
-	newNamespacedPv.Status.RefPvName = namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace
-	newNamespacedPv.Status.RefPvUid, _ = r.GetPvUid(ctx, namespacedPv)
-	patch := client.MergeFrom(namespacedPv)
-	if err := r.Status().Patch(ctx, newNamespacedPv, patch); err != nil {
+	newNamespacedPv.Status.RefPvName = newPvName
+	newNamespacedPv.Status.RefPvUid = newPvUid
+	if err := r.Status().Update(ctx, newNamespacedPv); err != nil {
 		logger.Error(err, "unable to update NamespacedPv status")
 		return err
 	}
@@ -239,9 +258,19 @@ func (r *NamespacedPvReconciler) UpdateStatus(ctx context.Context, namespacedPv 
 func (r *NamespacedPvReconciler) GetPvUid(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv) (string, error) {
 	logger := log.FromContext(ctx)
 	pv := &corev1.PersistentVolume{}
-	if err := r.Get(ctx, types.NamespacedName{Name: namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace}, pv); err != nil {
+	pvName := GetPvName(namespacedPv)
+	if err := r.Get(ctx, types.NamespacedName{Name: pvName}, pv); err != nil {
 		logger.Error(err, "unable to get PersistentVolume")
 		return "", err
 	}
 	return string(pv.UID), nil
+}
+
+func randomString(n int) string {
+	const letterBytes = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
 }
