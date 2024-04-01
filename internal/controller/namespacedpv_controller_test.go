@@ -73,6 +73,16 @@ var _ = Describe("namespaced pv controller", func() {
 		}).Should(Succeed())
 	})
 
+	It("should create PersistentVolumeClaim", func() {
+		namespacedPv := newNamespacedPv()
+		err := k8sClient.Create(ctx, namespacedPv)
+		Expect(err).NotTo(HaveOccurred())
+
+		pvc := corev1.PersistentVolumeClaim{}
+		Eventually(func() error {
+			return k8sClient.Get(ctx, client.ObjectKey{Namespace: "test", Name: "test-pvc"}, &pvc)
+		}).Should(Succeed())
+	})
 	It("should delete PersistentVolume", func() {
 		namespacedPv := newNamespacedPv()
 		err := k8sClient.Create(ctx, namespacedPv)
