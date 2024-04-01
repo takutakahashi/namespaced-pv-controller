@@ -22,8 +22,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -43,6 +45,7 @@ type NamespacedPvReconciler struct {
 //+kubebuilder:rbac:groups=namespaced-pv.homi.run,resources=namespacedpvs/finalizers,verbs=update
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes/finalizers,verbs=update;patch
+//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -73,10 +76,22 @@ func (r *NamespacedPvReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			logger.Error(err, "unable to patch NamespacedPv")
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{}, nil
 	}
 
 	if !namespacedPv.GetDeletionTimestamp().IsZero() {
 		return r.ReconcileDelete(ctx, &namespacedPv)
+	}
+
+	newNamespacedPv := namespacedPv.DeepCopy()
+	if newNamespacedPv.Spec.ClaimRefName == "" {
+		newNamespacedPv.Spec.ClaimRefName = namespacedPv.Spec.VolumeName + "-" + namespacedPv.Namespace
+		return ctrl.Result{}, r.Update(ctx, newNamespacedPv)
+	}
+
+	if err := r.CreatePvc(ctx, &namespacedPv); err != nil {
+		logger.Error(err, "unable to create PersistentVolumeClaim")
+		return ctrl.Result{}, err
 	}
 
 	err := r.CreateOrUpdatePv(ctx, &namespacedPv)
@@ -222,6 +237,64 @@ func (r *NamespacedPvReconciler) CreateOrUpdatePv(ctx context.Context, namespace
 	if op != controllerutil.OperationResultNone {
 		logger.Info("PersistentVolume created or patched", "operation", op)
 		r.UpdateStatus(ctx, namespacedPv)
+	}
+
+	return nil
+}
+
+func (r *NamespacedPvReconciler) CreatePvc(ctx context.Context, namespacedPv *namespacedpvv1.NamespacedPv) error {
+	// create PersistentVolumeClaim
+	existingPvc := &corev1.PersistentVolumeClaim{}
+	err := r.Get(ctx, types.NamespacedName{Name: namespacedPv.Spec.ClaimRefName, Namespace: namespacedPv.Namespace}, existingPvc)
+	if err == nil {
+		return nil
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{}
+	pvc.SetName(namespacedPv.Spec.ClaimRefName)
+	pvc.SetNamespace(namespacedPv.Namespace)
+	pvc.SetLabels(map[string]string{
+		"owner":           namespacedPv.Name,
+		"owner-namespace": namespacedPv.Namespace,
+	})
+	pvc.SetOwnerReferences([]metav1.OwnerReference{
+		{
+			APIVersion:         namespacedPv.APIVersion,
+			Kind:               namespacedPv.Kind,
+			Name:               namespacedPv.Name,
+			UID:                namespacedPv.UID,
+			Controller:         pointer.Bool(true),
+			BlockOwnerDeletion: pointer.Bool(true),
+		},
+	})
+	pvc.SetAnnotations(map[string]string{
+		"pv.kubernetes.io/provisioned-by": "namespaced-pv-controller",
+	})
+
+	op, err := controllerutil.CreateOrPatch(ctx, r.Client, pvc, func() error {
+		pvc.Spec = corev1.PersistentVolumeClaimSpec{
+			AccessModes: namespacedPv.Spec.AccessModes,
+			Resources: corev1.ResourceRequirements{
+				Requests: namespacedPv.Spec.Capacity,
+			},
+			StorageClassName: &namespacedPv.Spec.StorageClassName,
+			VolumeMode:       &namespacedPv.Spec.VolumeMode,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"owner":           namespacedPv.Name,
+					"owner-namespace": namespacedPv.Namespace,
+				},
+			},
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if op != controllerutil.OperationResultNone {
+		log.FromContext(ctx).Info("PersistentVolumeClaim created or patched", "operation", op)
 	}
 
 	return nil
